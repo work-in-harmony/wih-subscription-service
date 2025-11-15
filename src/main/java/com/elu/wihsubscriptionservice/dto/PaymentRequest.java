@@ -14,5 +14,5 @@ public class PaymentRequest {
     public int amount;
     public String currency;
     public String receipt_id;
-
+    public String email;
 }

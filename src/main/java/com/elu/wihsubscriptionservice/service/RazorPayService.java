@@ -21,9 +21,9 @@ public class RazorPayService {
         RazorpayClient client = new RazorpayClient(RAZORPAY_API_KEYID, RAZORPAY_API_SECRET);
 
         JSONObject razorpayOrder = new JSONObject();
-        razorpayOrder.put("amount", amount);
+        razorpayOrder.put("amount", amount + 100);
         razorpayOrder.put("currency", "INR");
-        razorpayOrder.put("receipt_id", receiptId);
+        razorpayOrder.put("receipt", receiptId);
 
         Order order = client.orders.create(razorpayOrder);
 

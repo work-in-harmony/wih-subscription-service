@@ -2,10 +2,17 @@ package com.elu.wihsubscriptionservice.controller;
 
 import com.elu.wihsubscriptionservice.dto.PaymentRequest;
 import com.elu.wihsubscriptionservice.dto.PaymentResponse;
+import com.elu.wihsubscriptionservice.dto.RequestDto;
+import com.elu.wihsubscriptionservice.dto.ResponseDto;
+import com.elu.wihsubscriptionservice.openFeign.UserClient;
+import com.elu.wihsubscriptionservice.openFeign.dto.UserRequestDto;
+import com.elu.wihsubscriptionservice.openFeign.dto.UserResponseDto;
+import com.elu.wihsubscriptionservice.publisher.EmailPublisher;
+import com.elu.wihsubscriptionservice.service.PaymentService;
 import com.elu.wihsubscriptionservice.service.RazorPayService;
-import lombok.AllArgsConstructor;
-import org.junit.jupiter.api.Order;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,10 +26,19 @@ import java.util.Map;
 public class RazorPayController {
 
 
+    private final EmailPublisher emailPublisher;
     private RazorPayService razorPayService;
+    private PaymentService paymentService;
+    private UserClient  userClient;
 
-    public RazorPayController(RazorPayService razorPayService) {
+    public RazorPayController(RazorPayService razorPayService,
+                              PaymentService paymentService,
+                              EmailPublisher emailPublisher,
+                              UserClient userClient) {
         this.razorPayService = razorPayService;
+        this.paymentService = paymentService;
+        this.emailPublisher = emailPublisher;
+        this.userClient = userClient;
     }
 
     @Value("${razorpat.api.secret}")
@@ -37,6 +53,7 @@ public class RazorPayController {
     public ResponseEntity<PaymentResponse> createOrder(@RequestBody PaymentRequest request) {
         System.out.println("RazorPayController.createOrder");
         try {
+            JSONObject razorpayOrder = new JSONObject();
             String order = razorPayService.createOrder(
                     request.amount,
                     request.currency,
@@ -47,7 +64,7 @@ public class RazorPayController {
                     .code("200")
                     .userExist(true)
                     .status("success")
-                    .order(order)
+                    .order(razorpayOrder.getString("id"))
                     .build();
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -66,6 +83,8 @@ public class RazorPayController {
         String orderId = data.get("razorpay_order_id");
         String paymentId = data.get("razorpay_payment_id");
         String signature = data.get("razorpay_signature");
+
+        System.out.println("THE INCOMING DATAS ARE " + orderId + " " + paymentId + " " + signature);
 
         try {
             String generatedSignature = generateSignature(orderId, paymentId, RAZORPAY_SECRET);
@@ -95,6 +114,38 @@ public class RazorPayController {
 
         byte[] hash = mac.doFinal(payload.getBytes());
         return new String(org.apache.commons.codec.binary.Hex.encodeHex(hash));
+    }
+
+    @PostMapping("/success")
+    public ResponseEntity<ResponseDto> successPayment(@RequestBody RequestDto request) {
+        System.out.println("RazorPayController.successPayment");
+        try {
+            emailPublisher.sendEmail(request.getEmail(), request.getTransactionId(), request.getAmount());
+            UserRequestDto responseDto = UserRequestDto.builder()
+                    .email(request.getEmail()).build();
+            userClient.registerUser(responseDto);
+            return paymentService.savePaymentDetails(request);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/failure")
+    public ResponseEntity<ResponseDto> failurePayment() {
+        try {
+            ResponseDto responseDto = ResponseDto.builder()
+                    .status("failed")
+                    .message("Payment was not complete")
+                    .code("400")
+                    .email(null)
+                    .transactionId(null)
+                    .success(false)
+                    .userExist(false)
+                    .build();
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(responseDto);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
     }
 
 }

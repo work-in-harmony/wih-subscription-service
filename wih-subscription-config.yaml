@@ -1,0 +1,40 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wih-subscription-service
+spec:
+  selector:
+    app: wih-subscription-service
+  ports:
+    - name: http
+      port: 8030
+      targetPort: 8030
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wih-subscription-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wih-subscription-service
+  template:
+    metadata:
+      labels:
+        app: wih-subscription-service
+    spec:
+      containers:
+        - name: wih-subscription-service
+          image: elu107/wih-subscription-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8030
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8030
+            initialDelaySeconds: 15
+            periodSeconds: 10
